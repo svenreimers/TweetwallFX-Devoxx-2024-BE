@@ -1,6 +1,6 @@
 {
     "conferenceClient": {
-        "eventBaseUri": "https://yourConference.cfp.dev/api/public",
-        "votingResultsToken": "PutYourActualTokenHere"
+        "eventBaseUri": "https://dvbe24.cfp.dev/api/public",
+        "eventStatsBaseUri": "https://api.voxxr.in/api/events/dvbe24"
     }
 }

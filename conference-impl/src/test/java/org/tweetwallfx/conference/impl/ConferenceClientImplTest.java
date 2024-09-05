@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2022-2023 TweetWallFX
+ * Copyright (c) 2022-2024 TweetWallFX
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -38,6 +38,6 @@ public class ConferenceClientImplTest extends ConferenceClientTestBase {
     }
 
     public ConferenceClientImplTest() {
-        super(ConferenceClientImpl.class, "friday", "4706", "1904");
+        super(ConferenceClientImpl.class, "friday", "3053", "17664");
     }
 }

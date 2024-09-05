@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2022-2023 TweetWallFX
+ * Copyright (c) 2022-2024 TweetWallFX
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -41,12 +41,11 @@ public class ConferenceClientSettings {
      */
     public static final String CONFIG_KEY = "conferenceClient";
     private String eventBaseUri;
-    private String votingResultsToken;
+    private String eventStatsBaseUri;
+    private String eventStatsToken;
 
     /**
-     * Returns the Event Base URI from where all standard calls are executed.
-     *
-     * @return the Event Base URI
+     * {@return the Event Base URI} from where all standard calls are executed.
      */
     public String getEventBaseUri() {
         return Objects.requireNonNull(eventBaseUri, "eventBaseUri must not be null!");
@@ -65,30 +64,48 @@ public class ConferenceClientSettings {
     }
 
     /**
-     * Returns the Token required to retrieve voting results.
-     *
-     * @return the voting result token
+     * {@return the Event Stats Base URI} to retrieve stats from.
      */
-    public String getVotingResultsToken() {
-        return votingResultsToken;
+    public String getEventStatsBaseUri() {
+        return eventStatsBaseUri;
     }
 
     /**
-     * Sets the Token required to retrieve voting results.
+     * Sets the Event Stats Base URI to retrieve stats from.
      *
-     * @param votingResultsToken the voting result token
+     * @param eventStatsBaseUri the Event Stats Base URI
      */
-    public void setVotingResultsToken(String votingResultsToken) {
-        Objects.requireNonNull(votingResultsToken, "votingResultsToken must not be null!");
-        this.votingResultsToken = votingResultsToken;
+    public void setEventStatsBaseUri(String eventStatsBaseUri) {
+        Objects.requireNonNull(eventStatsBaseUri, "eventStatsBaseUri must not be null!");
+        this.eventStatsBaseUri = eventStatsBaseUri.endsWith("/")
+                ? eventStatsBaseUri
+                : eventStatsBaseUri + '/';
+    }
+
+    /**
+     * {@return the Event Stats Token} required to retrieve stats.
+     */
+    public String getEventStatsToken() {
+        return eventStatsToken;
+    }
+
+    /**
+     * Sets the Event Stats Token required to retrieve stats.
+     *
+     * @param eventStatsToken the Event Stats Token
+     */
+    public void setEventStatsToken(String eventStatsToken) {
+        Objects.requireNonNull(eventStatsToken, "eventStatsToken must not be null!");
+        this.eventStatsToken = eventStatsToken;
     }
 
     @Override
     public String toString() {
         return createToString(this, map(
                 "eventBaseUri", getEventBaseUri(),
-                "votingResultsToken", getVotingResultsToken()
-        )) + " extends " + super.toString();
+                "eventStatsToken", getEventStatsToken(),
+                "eventStatsBaseUri", getEventStatsBaseUri()
+                ));
     }
 
     /**

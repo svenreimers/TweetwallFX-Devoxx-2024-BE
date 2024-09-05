@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2022-2023 TweetWallFX
+ * Copyright (c) 2022-2024 TweetWallFX
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -25,12 +25,17 @@ package org.tweetwallfx.conference.impl;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.format.TextStyle;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.TreeMap;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.random.RandomGenerator;
 import java.util.stream.Collectors;
 
 import jakarta.ws.rs.core.GenericType;
@@ -57,14 +62,17 @@ import org.tweetwallfx.conference.spi.TalkImpl;
 import org.tweetwallfx.conference.spi.TrackImpl;
 import org.tweetwallfx.conference.spi.util.RestCallHelper;
 import org.tweetwallfx.config.Configuration;
+import org.tweetwallfx.util.ExpiringValue;
 
-public class ConferenceClientImpl implements ConferenceClient, RatingClient {
+public final class ConferenceClientImpl implements ConferenceClient, RatingClient {
 
     private static final Logger LOG = LoggerFactory.getLogger(ConferenceClientImpl.class);
     private final ConferenceClientSettings config;
     private final Map<String, SessionType> sessionTypes;
     private final Map<String, Room> rooms;
     private final Map<String, Track> tracks;
+    private final ExpiringValue<Map<String, Integer>> talkFavoriteCounts;
+    private final ExpiringValue<Map<WeekDay, List<RatedTalk>>> ratedTalks;
 
     public ConferenceClientImpl() {
         this.config = Configuration.getInstance().getConfigTyped(
@@ -88,11 +96,18 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
                 .map(this::convertTrack)
                 .collect(Collectors.toMap(Identifiable::getId, Function.identity()));
         LOG.info("Track IDs: {}", tracks.keySet());
+        this.ratedTalks = new ExpiringValue<>(this::getVotingResults, Duration.ofSeconds(60));
+        this.talkFavoriteCounts = new ExpiringValue<>(this::getTalkFavoriteCounts, Duration.ofMinutes(5));
+
+        // trigger initialization of ratedTalks
+        LOG.trace("Initialized ratedTalks: {}", ratedTalks.getValue());
+        // trigger initialization of talkFavoriteCounts
+        LOG.trace("Initialized talkFavoriteCounts: {}", talkFavoriteCounts.getValue());
     }
 
     @Override
     public String getName() {
-        return "DEVOXX_XYZ";
+        return "DEVOXX_BE_2024";
     }
 
     @Override
@@ -116,7 +131,9 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
 
     @Override
     public List<ScheduleSlot> getSchedule(final String conferenceDay, final String roomName) {
-        return RestCallHelper.readOptionalFrom(config.getEventBaseUri() + "schedules/" + conferenceDay + '/' + roomName, listOfMaps())
+        return RestCallHelper
+                .readOptionalFrom(config.getEventBaseUri() + "schedules/" + conferenceDay + '/' + roomName,
+                        listOfMaps())
                 .orElse(List.of())
                 .stream()
                 .map(this::convertScheduleSlot)
@@ -125,7 +142,11 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
 
     @Override
     public List<Speaker> getSpeakers() {
-        return RestCallHelper.readOptionalFrom(config.getEventBaseUri() + "speakers", listOfMaps())
+        return RestCallHelper
+                .readOptionalFrom(config.getEventBaseUri() + "speakers", listOfMaps(), (a, b) -> {
+                    a.addAll(b);
+                    return a;
+                })
                 .orElse(List.of())
                 .stream()
                 .map(this::convertSpeaker)
@@ -158,29 +179,82 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
         return List.copyOf(tracks.values());
     }
 
+    private Optional<ConferenceClientSettings> getRatingClientEnabledConfig() {
+        return Optional.of(config)
+                .filter(ccs -> Objects.nonNull(ccs.getEventStatsBaseUri()))
+                .filter(ccs -> Objects.nonNull(ccs.getEventStatsToken()));
+    }
+
     @Override
     public Optional<RatingClient> getRatingClient() {
-        return Optional.of(config)
-                .map(ConferenceClientSettings::getVotingResultsToken)
+        return getRatingClientEnabledConfig()
                 .map(_ignored_ -> this);
     }
 
     @Override
     public List<RatedTalk> getRatedTalks(final String conferenceDay) {
-        return RestCallHelper.readOptionalFrom(config.getEventBaseUri() + "ratings/" + conferenceDay.toLowerCase(Locale.ENGLISH).substring(0, 3) + '/' + config.getVotingResultsToken(), listOfMaps())
-                .orElse(List.of())
-                .stream()
-                .map(this::convertRatedTalk)
-                .toList();
+        if (Boolean.getBoolean("org.tweetwallfx.conference.randomRatedTalks")) {
+            LOG.debug("######## randomizedRatedTalksPerDay");
+            return randomizedRatedTalks();
+        } else {
+            final Map<WeekDay, List<RatedTalk>> votingResults = ratedTalks.getValue();
+
+            return votingResults.entrySet().stream()
+                    .filter(e -> e.getKey().dayId().equals(conferenceDay))
+                    .map(Map.Entry::getValue)
+                    .findFirst()
+                    .orElseGet(() -> {
+                        LOG.warn(
+                                "Lookup of voting results for conferenceDay='{}' failed among the following keySet: {}",
+                                conferenceDay, votingResults.keySet());
+                        return List.of();
+                    });
+        }
     }
 
     @Override
     public List<RatedTalk> getRatedTalksOverall() {
-        return RestCallHelper.readOptionalFrom(config.getEventBaseUri() + "ratings/" + config.getVotingResultsToken(), listOfMaps())
+        if (Boolean.getBoolean("org.tweetwallfx.conference.randomRatedTalks")) {
+            LOG.debug("######## randomizedRatedTalksWeek");
+            return randomizedRatedTalks();
+        } else {
+            return ratedTalks.getValue().entrySet().stream()
+                    .map(Map.Entry::getValue)
+                    .flatMap(List::stream)
+                    .toList();
+        }
+    }
+
+    private List<RatedTalk> randomizedRatedTalks() {
+        LOG.debug("######## randomizedRatedTalks");
+        return RestCallHelper.readOptionalFrom(config.getEventBaseUri() + "talks", listOfMaps())
                 .orElse(List.of())
                 .stream()
-                .map(this::convertRatedTalk)
+                .filter(talk -> RandomGenerator.getDefault().nextBoolean())
+                .map(this::convertTalkToRatedTalk)
                 .toList();
+    }
+
+    private Map<WeekDay, List<RatedTalk>> getVotingResults() {
+        LOG.info("Loading PublicEventStats");
+        return getRatingClientEnabledConfig()
+                .flatMap(_ignored -> RestCallHelper.getOptionalResponse(
+                        config.getEventStatsBaseUri() + "topTalks",
+                        Map.of("token", config.getEventStatsToken())))
+                .flatMap(r -> RestCallHelper.readOptionalFrom(r, map()))
+                .map(this::convertTopTalks)
+                .orElseGet(Map::of);
+    }
+
+    private Map<String, Integer> getTalkFavoriteCounts() {
+        LOG.info("Loading TalksFavoriteCounts");
+        return getRatingClientEnabledConfig()
+                .flatMap(_ignored -> RestCallHelper.getOptionalResponse(
+                        config.getEventStatsBaseUri() + "talksStats",
+                        Map.of("token", config.getEventStatsToken())))
+                .flatMap(r -> RestCallHelper.readOptionalFrom(r, map()))
+                .map(this::convertTalksStats)
+                .orElseGet(Map::of);
     }
 
     private static GenericType<List<Map<String, Object>>> listOfMaps() {
@@ -193,12 +267,51 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
         };
     }
 
+    @SuppressWarnings("unchecked")
+    private Map<WeekDay, List<RatedTalk>> convertTopTalks(final Map<String, Object> input) {
+        LOG.info("Converting TopTalks: {}", input);
+        return retrieveValue(input, "dailyTopTalks", List.class,
+                dailyTalksStatsList -> ((List<?>) dailyTalksStatsList).stream()
+                        .map(o -> (Map<String, Object>) o)
+                        .collect(Collectors.toMap(
+                                dailyStats -> retrieveValue(dailyStats, "date", String.class, WeekDay::of),
+                                dailyStats -> retrieveValue(dailyStats, "topTalks", List.class,
+                                        topTalksList -> ((List<?>) topTalksList).stream()
+                                                .map(o -> (Map<String, Object>) o)
+                                                .map(this::convertRatedTalk)
+                                                .toList()))));
+    }
+
+    @SuppressWarnings("unchecked")
+    private Map<String, Integer> convertTalksStats(final Map<String, Object> input) {
+        LOG.info("Converting TalksStats: {}", input);
+        final Map<String, Integer> result = retrieveValue(input, "perTalkStats", List.class,
+                perTalkStatsList -> ((List<?>) perTalkStatsList).stream()
+                        .map(o -> (Map<String, Object>) o)
+                        .collect(Collectors.toMap(
+                                perTalkStats -> retrieveValue(perTalkStats, "talkId", String.class),
+                                perTalkStats -> retrieveValue(perTalkStats, "totalFavoritesCount", Number.class,
+                                        Number::intValue))));
+        LOG.info("Updated talkFavoriteCounts to: {}", result);
+        return result;
+    }
+
+    private RatedTalk convertTalkToRatedTalk(final Map<String, Object> input) {
+        LOG.debug("Converting Talk to RatedTalk: {}", input);
+        return RatedTalkImpl.builder()
+                .withAverageRating(RandomGenerator.getDefault().nextDouble(5))
+                .withTotalRating(RandomGenerator.getDefault().nextInt(200))
+                .withTalk(convertTalk(input))
+                .build();
+    }
+
     private RatedTalk convertRatedTalk(final Map<String, Object> input) {
         LOG.debug("Converting to RatedTalk: {}", input);
         return RatedTalkImpl.builder()
-                .withAverageRating(retrieveValue(input, "avgRatings", Number.class, Number::doubleValue))
-                .withTotalRating(retrieveValue(input, "totalRatings", Number.class, Number::intValue))
-                .withTalk(retrieveValue(input, "id", Integer.class, talkId -> getTalk(Integer.toString(talkId)).get()))
+                .withAverageRating(retrieveValue(input, "averageRating", Number.class, Number::doubleValue))
+                .withTotalRating(retrieveValue(input, "numberOfVotes", Number.class, Number::intValue))
+                .withTalk(retrieveValue(input, "talkId", String.class,
+                        talkId -> getTalk(talkId).get()))
                 .build();
     }
 
@@ -274,8 +387,9 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
     @SuppressWarnings("unchecked")
     private Talk convertTalk(final Map<String, Object> input) {
         LOG.debug("Converting to Talk: {}", input);
+        String talkId = retrieveValue(input, "id", Number.class, Number::toString);
         return TalkImpl.builder()
-                .withId(retrieveValue(input, "id", Number.class, Number::toString))
+                .withId(talkId)
                 .withName(retrieveValue(input, "title", String.class))
                 .withAudienceLevel(retrieveValue(input, "audienceLevel", String.class))
                 .withSessionType(sessionTypes.get(alternatives(
@@ -284,7 +398,11 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
                         // or by having the session type object as value
                         retrieveValue(input, "sessionType", Map.class,
                                 m -> retrieveValue(m, "id", Number.class, Number::toString)))))
-                .withFavoriteCount(retrieveValue(input, "totalFavourites", Number.class, Number::intValue))
+                .withFavoriteCount(alternatives(
+                        // if value is available from public event stats
+                        talkFavoriteCounts.getValue().get(talkId),
+                        // otherwise fall back to value from talk
+                        retrieveValue(input, "totalFavourites", Number.class, Number::intValue)))
                 .withLanguage(Locale.ENGLISH)
                 .withScheduleSlots(retrieveValue(input, "timeSlots", List.class,
                         list -> ((List<?>) list).stream()
@@ -324,7 +442,8 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
         return type.cast(data.get(key));
     }
 
-    private static <T, R> R retrieveValue(final Map<String, Object> data, final String key, final Class<T> type, final Function<T, R> converter) {
+    private static <T, R> R retrieveValue(final Map<String, Object> data, final String key, final Class<T> type,
+            final Function<T, R> converter) {
         final T t = retrieveValue(data, key, type);
         return null == t
                 ? null
@@ -346,5 +465,14 @@ public class ConferenceClientImpl implements ConferenceClient, RatingClient {
         }
 
         return null;
+    }
+
+    protected static record WeekDay(String dayId) {
+
+        static WeekDay of(String date) {
+            return new WeekDay(LocalDate.parse(date).getDayOfWeek()
+                    .getDisplayName(TextStyle.FULL, Locale.ENGLISH)
+                    .toLowerCase(Locale.ENGLISH));
+        }
     }
 }
