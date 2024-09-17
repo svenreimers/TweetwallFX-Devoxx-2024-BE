@@ -224,7 +224,7 @@ allprojects {
             // get recommended versions from the platform project
             api platform(rootProject)
 
-            javafx group: 'org.openjfx', name: 'javafx-base', version: '22.0.2', classifier: javaFxPlatform
+            javafx group: 'org.openjfx', name: 'javafx-base', version: '23', classifier: javaFxPlatform
             javafx group: 'org.openjfx', name: 'javafx-graphics', version: '23', classifier: javaFxPlatform
             javafx group: 'org.openjfx', name: 'javafx-fxml', version: '23', classifier: javaFxPlatform
             javafx group: 'org.openjfx', name: 'javafx-controls', version: '23', classifier: javaFxPlatform
