@@ -23,6 +23,8 @@
  */
 package org.tweetwallfx.conference.impl;
 
+import static org.tweetwallfx.util.Nullable.nullable;
+
 import java.time.Instant;
 import java.util.Comparator;
 import java.util.List;
@@ -39,8 +41,10 @@ import javafx.scene.image.Image;
 import org.tweetwallfx.cache.URLContent;
 import org.tweetwallfx.cache.URLContentCacheBase;
 import org.tweetwallfx.conference.spi.util.RestCallHelper;
+import org.tweetwallfx.config.Configuration;
 import org.tweetwallfx.stepengine.api.DataProvider;
 import org.tweetwallfx.stepengine.api.config.StepEngineSettings;
+import org.tweetwallfx.util.ToString;
 
 public class DevoxxPhotoSharingDataProvider implements DataProvider, DataProvider.Scheduled {
 
@@ -133,10 +137,9 @@ public class DevoxxPhotoSharingDataProvider implements DataProvider, DataProvide
     private Optional<SharedPhotos> loadPhotosPage(final String lastVisible) {
         return RestCallHelper.readOptionalFrom(
                 config.queryUrl(),
-                Map.of(
-                        "pageSize", config.pageSize(),
-                        "lastVisible", lastVisible
-                ),
+                Configuration.mergeMap(
+                        Map.of("pageSize", config.pageSize()),
+                        null == lastVisible ? Map.of() : Map.of("lastVisible", lastVisible)),
                 SharedPhotos.class);
     }
 
@@ -207,12 +210,24 @@ public class DevoxxPhotoSharingDataProvider implements DataProvider, DataProvide
         }
     }
 
-    private static record SharedPhotos(
+    public static record SharedPhotos(
             List<SharedPhoto> photos,
             PageInfo pageInfo) {
+
+        public SharedPhotos(
+                final List<SharedPhoto> photos,
+                final PageInfo pageInfo) {
+            this.photos = nullable(photos);
+            this.pageInfo = pageInfo;
+        }
+
+        @Override
+        public List<SharedPhoto> photos() {
+            return nullable(photos);
+        }
     }
 
-    private static record SharedPhoto(
+    public static record SharedPhoto(
             Instant createdAt,
             long likes,
             boolean flaggedAsSpam,
@@ -220,7 +235,7 @@ public class DevoxxPhotoSharingDataProvider implements DataProvider, DataProvide
             String url) {
     }
 
-    private static record PageInfo(
+    public static record PageInfo(
             long pageSize,
             String lastVisible,
             boolean hasMore) {
