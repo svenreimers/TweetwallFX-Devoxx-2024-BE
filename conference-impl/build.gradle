@@ -1,7 +1,7 @@
 /*
  * MIT License
  *
- * Copyright (c) 2022-2023 TweetWallFX
+ * Copyright (c) 2022-2024 TweetWallFX
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,8 +26,10 @@ dependencies {
     api 'jakarta.ws.rs:jakarta.ws.rs-api'
 
     implementation 'org.slf4j:slf4j-api'
+    implementation 'org.tweetwallfx:tweetwallfx-cache:1.1.+'
     implementation 'org.tweetwallfx:tweetwallfx-configuration:1.1.+'
     implementation 'org.tweetwallfx:tweetwallfx-conference-spi:1.1.+'
+    implementation 'org.tweetwallfx:tweetwallfx-stepengine-api:1.1.+'
     implementation 'org.tweetwallfx:tweetwallfx-utility:1.1.+'
 
     runtimeOnly 'org.apache.logging.log4j:log4j-slf4j2-impl'
