@@ -28,3 +28,6 @@ gradle-app.setting
 **/nbproject/private/
 **/.nb-gradle
 
+# log files
+*.log
+
