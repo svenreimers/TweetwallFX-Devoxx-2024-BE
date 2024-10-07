@@ -78,6 +78,17 @@
                 }
             },
             {
+                "stepClassName": "org.tweetwallfx.conference.impl.DevoxxPhotoSharingMosaicStep",
+                "config": {
+                    "layoutX": 35,
+                    "layoutY": 165,
+                    "width": 1860,
+                    "height": 700,
+                    "columns": 6,
+                    "rows": 3
+                }
+            },
+            {
                 "stepClassName": "org.tweetwallfx.conference.stepengine.steps.ShowSchedule",
                 "config": {
                     "layoutX": 35,
@@ -126,11 +137,14 @@
                 }
             },
             {
-                "stepClassName": "org.tweetwallfx.stepengine.steps.PauseStep",
+                "stepClassName": "org.tweetwallfx.conference.impl.DevoxxPhotoSharingMosaicStep",
                 "config": {
-                    "amount": "15",
-                    "unit": "SECONDS",
-                    "skipWhenSkipped": "TopRatedWeek"
+                    "layoutX": 900,
+                    "layoutY": 165,
+                    "width": 950,
+                    "height": 700,
+                    "columns": 3,
+                    "rows": 3
                 }
             },
             {
