@@ -44,7 +44,6 @@ import org.tweetwallfx.conference.spi.util.RestCallHelper;
 import org.tweetwallfx.config.Configuration;
 import org.tweetwallfx.stepengine.api.DataProvider;
 import org.tweetwallfx.stepengine.api.config.StepEngineSettings;
-import org.tweetwallfx.util.ToString;
 
 public class DevoxxPhotoSharingDataProvider implements DataProvider, DataProvider.Scheduled {
 
